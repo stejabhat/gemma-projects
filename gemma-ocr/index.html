@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF OCR + Ollama (Gemma 4)</title>
+    <style>
+      body { font-family: system-ui, Arial, sans-serif; margin: 24px; max-width: 980px; }
+      .row { display: flex; gap: 16px; flex-wrap: wrap; }
+      .col { flex: 1 1 240px; }
+      label { display:block; margin-bottom: 6px; font-weight: 600; }
+      input[type="file"], input[type="number"] { width: 100%; }
+      button { padding: 10px 14px; margin-top: 10px; cursor: pointer; }
+      textarea { width: 100%; min-height: 220px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+      pre { white-space: pre-wrap; word-break: break-word; background:#f6f6f6; padding:12px; border-radius: 10px; }
+      .status { margin-top: 10px; color: #444; }
+    </style>
+  </head>
+  <body>
+    <h1>PDF OCR → Structured Content (Preserve Layout)</h1>
+
+    <div class="row">
+      <div class="col">
+        <label>Scanned PDF</label>
+        <input id="pdfFile" type="file" accept="application/pdf" />
+      </div>
+      <div class="col">
+        <label>Start page (1-based)</label>
+        <input id="startPage" type="number" value="1" min="1" step="1" />
+      </div>
+      <div class="col">
+        <label>End page (1-based)</label>
+        <input id="endPage" type="number" value="1" min="1" step="1" />
+      </div>
+    </div>
+
+    <button id="runBtn">Process</button>
+    <div class="status" id="status"></div>
+
+    <h2>Structured Content</h2>
+    <pre id="structured"></pre>
+
+    <h2>Raw OCR Text (selected pages)</h2>
+    <pre id="ocr"></pre>
+
+    <script>
+      const runBtn = document.getElementById('runBtn');
+      const statusEl = document.getElementById('status');
+      const structuredEl = document.getElementById('structured');
+      const ocrEl = document.getElementById('ocr');
+
+      function setStatus(msg) { statusEl.textContent = msg; }
+
+      runBtn.addEventListener('click', async () => {
+        const fileInput = document.getElementById('pdfFile');
+        const file = fileInput.files[0];
+        if (!file) { setStatus('Please choose a PDF.'); return; }
+
+        const start_page = parseInt(document.getElementById('startPage').value, 10);
+        const end_page = parseInt(document.getElementById('endPage').value, 10);
+
+        structuredEl.textContent = '';
+        ocrEl.textContent = '';
+        setStatus('Uploading and processing...');
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('start_page', String(start_page));
+        formData.append('end_page', String(end_page));
+
+        try {
+          // Derive API base from current page origin to avoid hardcoded ports/protocols.
+          // If the UI is served from a different origin/port than the API, update the UI hosting strategy
+          // or set up a reverse proxy. Keeping it relative is the safest default.
+          // Call API from the current origin so the page works when served by uvicorn/FastAPI.
+          // If you host the UI elsewhere, ensure CORS/proxy is configured.
+          const res = await fetch(`/api/process`, { method: 'POST', body: formData });
+
+
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText || `HTTP ${res.status}`);
+          }
+          const data = await res.json();
+          setStatus(`Done. PDF pages: ${data.total_pages}. Processing: ${data.start_page}-${data.end_page}.`);
+          structuredEl.textContent = data.structured_content || '';
+          ocrEl.textContent = data.ocr_text || '';
+        } catch (e) {
+          console.error(e);
+          setStatus('Error: ' + e.message);
+        }
+      });
+    </script>
+  </body>
+</html>
+
